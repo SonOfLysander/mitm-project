@@ -56,11 +56,11 @@ public class ProxyConfig {
   }
 
   @Bean(destroyMethod = "stop")
-  public HttpProxyServer httpProxyServer(HttpFiltersSource httpFiltersSource) {
+  public HttpProxyServer httpProxyServer(HttpFiltersSource httpFiltersSource, @Value("${application.proxy.port}") int portNumber) {
     HttpProxyServer proxyServer = null;
     do {
       try {
-        int portNumber = random.nextInt(1000) + 8080;
+//        int portNumber = random.nextInt(1000) + 8080;
         proxyServer = DefaultHttpProxyServer.bootstrap()
           .withPort(portNumber)
           .withFiltersSource(httpFiltersSource)

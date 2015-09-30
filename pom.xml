@@ -12,6 +12,7 @@
   <modules>
     <module>LittleProxy</module>
     <module>LittleProxy-mitm</module>
+    <module>mitm</module>
   </modules>
 
 </project>

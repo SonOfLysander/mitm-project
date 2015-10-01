@@ -2,18 +2,23 @@ package io.paulbaker.mitm.proxy;
 
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.http.DefaultHttpResponse;
+import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpObject;
 import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpResponse;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpVersion;
+import io.netty.util.AttributeKey;
 import org.apache.log4j.Logger;
 import org.littleshoot.proxy.HttpFilters;
 import org.littleshoot.proxy.HttpFiltersAdapter;
 import org.littleshoot.proxy.HttpFiltersSource;
 import org.littleshoot.proxy.HttpFiltersSourceAdapter;
 import org.littleshoot.proxy.HttpProxyServer;
+import org.littleshoot.proxy.MitmManager;
 import org.littleshoot.proxy.impl.DefaultHttpProxyServer;
+import org.littleshoot.proxy.mitm.HostNameMitmManager;
+import org.littleshoot.proxy.mitm.RootCertificateException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -55,14 +60,20 @@ public class ProxyConfig {
     };
   }
 
+  @Bean
+  public MitmManager mitmManager() throws RootCertificateException {
+    return new HostNameMitmManager();
+  }
+
   @Bean(destroyMethod = "stop")
-  public HttpProxyServer httpProxyServer(HttpFiltersSource httpFiltersSource, @Value("${application.proxy.port}") int portNumber) {
+  public HttpProxyServer httpProxyServer(HttpFiltersSource httpFiltersSource, MitmManager mitmManager, @Value("${application.proxy.port}") int portNumber) {
     HttpProxyServer proxyServer = null;
     do {
       try {
 //        int portNumber = random.nextInt(1000) + 8080;
         proxyServer = DefaultHttpProxyServer.bootstrap()
           .withPort(portNumber)
+          .withManInTheMiddle(mitmManager)
           .withFiltersSource(httpFiltersSource)
           .start();
       } catch (Exception e) {
@@ -82,6 +93,8 @@ public class ProxyConfig {
 
   private class DummyFilterAdapter extends HttpFiltersAdapter {
 
+    private DefaultHttpResponse dummyResponse = new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.valueOf(200));
+
     public DummyFilterAdapter() {
       super(null, null);
     }
@@ -94,17 +107,24 @@ public class ProxyConfig {
      */
     @Override
     public HttpResponse clientToProxyRequest(HttpObject httpObject) {
-      return new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
+      return dummyResponse;
     }
 
+//    @Override
+//    public HttpResponse proxyToServerRequest(HttpObject httpObject) {
+//      return dummyResponse;
+//    }
+
     @Override
-    public HttpResponse proxyToServerRequest(HttpObject httpObject) {
+    public HttpObject serverToProxyResponse(HttpObject httpObject) {
+//      return dummyResponse;
       return null;
     }
 
-    @Override
-    public HttpObject proxyToClientResponse(HttpObject httpObject) {
-      return null;
-    }
+//    @Override
+//    public HttpObject proxyToClientResponse(HttpObject httpObject) {
+//      return dummyResponse;
+//      return null;
+//    }
   }
 }

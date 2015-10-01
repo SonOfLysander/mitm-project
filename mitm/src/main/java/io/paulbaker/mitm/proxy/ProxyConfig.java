@@ -2,13 +2,11 @@ package io.paulbaker.mitm.proxy;
 
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.http.DefaultHttpResponse;
-import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpObject;
 import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpResponse;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpVersion;
-import io.netty.util.AttributeKey;
 import org.apache.log4j.Logger;
 import org.littleshoot.proxy.HttpFilters;
 import org.littleshoot.proxy.HttpFiltersAdapter;
@@ -24,7 +22,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
-import java.net.BindException;
 import java.util.Random;
 import java.util.Set;
 
@@ -51,7 +48,7 @@ public class ProxyConfig {
         String uri = originalRequest.getUri().toLowerCase();
         if (whitelist.stream().anyMatch(uri::contains)) {
           logger.info(String.format("ALLOWED: %s %s", originalRequest.getMethod(), uri));
-          return new HttpFiltersAdapter(originalRequest, ctx);
+          return new LoggingFilterAdapter(originalRequest, ctx);
         } else {
           logger.info(String.format("BLOCKED: %s %s", originalRequest.getMethod(), uri));
           return new DummyFilterAdapter();
@@ -62,35 +59,70 @@ public class ProxyConfig {
 
   @Bean
   public MitmManager mitmManager() throws RootCertificateException {
-    return new HostNameMitmManager();
+    HostNameMitmManager hostNameMitmManager = new HostNameMitmManager();
+    return hostNameMitmManager;
   }
 
   @Bean(destroyMethod = "stop")
   public HttpProxyServer httpProxyServer(HttpFiltersSource httpFiltersSource, MitmManager mitmManager, @Value("${application.proxy.port}") int portNumber) {
-    HttpProxyServer proxyServer = null;
-    do {
-      try {
-//        int portNumber = random.nextInt(1000) + 8080;
-        proxyServer = DefaultHttpProxyServer.bootstrap()
-          .withPort(portNumber)
-          .withManInTheMiddle(mitmManager)
-          .withFiltersSource(httpFiltersSource)
-          .start();
-      } catch (Exception e) {
-        // The BindException is swallowed somewhere, which means we cannot explicitly catch it.
-        // We can only catch the general exception, and then check if it is a BindException.
-        if (e instanceof BindException) {
-          // If it is a bind exception we just ignore it and try to get a new random port.
-          logger.error("Port was already taken. Reattempting.");
-        } else {
-          // If it is not a BindException, rethrow it.
-          throw e;
-        }
-      }
-    } while (proxyServer == null);
+    HttpProxyServer proxyServer;
+    proxyServer = DefaultHttpProxyServer.bootstrap()
+      .withPort(portNumber)
+      .withManInTheMiddle(mitmManager)
+      .withFiltersSource(httpFiltersSource)
+      .withTransparent(true)
+      .start();
     return proxyServer;
   }
 
+  public class LoggingFilterAdapter extends HttpFiltersAdapter {
+    public LoggingFilterAdapter(HttpRequest originalRequest, ChannelHandlerContext clientCtx) {
+      super(originalRequest, clientCtx);
+    }
+
+//    public LoggingFilterAdapter(HttpRequest originalRequest) {
+//      super(originalRequest);
+//    }
+
+    @Override
+    public HttpResponse clientToProxyRequest(HttpObject httpObject) {
+      if (httpObject instanceof HttpRequest) {
+        HttpRequest request = (HttpRequest) httpObject;
+        StringBuilder sb = new StringBuilder();
+        sb.append(System.getProperty("line.separator")).append(request.getMethod()).append("->").append(request.getUri());
+        sb.append(System.getProperty("line.separator"));
+        request.headers().forEach(header -> sb.append(header.getKey() + ": " + header.getValue()).append("; "));
+        logger.info(sb.toString());
+      } else {
+        logger.info("REQUEST " + httpObject.getClass());
+      }
+//      if (httpObject instanceof DefaultLastHttpContent) {
+//        DefaultLastHttpContent content = (DefaultLastHttpContent) httpObject;
+//        StringBuilder sb = new StringBuilder("TRAILING -> ");
+//        content.trailingHeaders().forEach(header -> sb.append(header.getKey()+": " + header.getValue()).append("; "));
+//        logger.info(sb.toString());
+//      }
+      return super.clientToProxyRequest(httpObject);
+    }
+
+    @Override
+    public HttpObject serverToProxyResponse(HttpObject httpObject) {
+      logger.info("RESPONSE -> " + httpObject.getClass());
+//      if (httpObject instanceof HttpResponse) {
+//        HttpResponse response = (HttpResponse) httpObject;
+//        response.
+//        String string = response.getDecoderResult().toString();
+//        logger.info("DECODER -> " + string);
+//      }
+      return super.serverToProxyResponse(httpObject);
+    }
+
+
+  }
+
+  /**
+   * All requests are blocked. A simple 200 OK is returned back for all requests using the DummyFilter
+   */
   private class DummyFilterAdapter extends HttpFiltersAdapter {
 
     private DefaultHttpResponse dummyResponse = new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.valueOf(200));
@@ -107,6 +139,14 @@ public class ProxyConfig {
      */
     @Override
     public HttpResponse clientToProxyRequest(HttpObject httpObject) {
+      if (httpObject instanceof HttpRequest) {
+        HttpRequest request = (HttpRequest) httpObject;
+        StringBuilder sb = new StringBuilder();
+        sb.append(System.getProperty("line.separator")).append("[BLOCKED]").append(request.getMethod()).append("->").append(request.getUri());
+        sb.append(System.getProperty("line.separator"));
+        request.headers().forEach(header -> sb.append(header.getKey() + ": " + header.getValue()).append("; "));
+        logger.info(sb.toString());
+      }
       return dummyResponse;
     }
 
@@ -115,6 +155,12 @@ public class ProxyConfig {
 //      return dummyResponse;
 //    }
 
+    /**
+     * Returns nothing to kill the request.
+     *
+     * @param httpObject
+     * @return
+     */
     @Override
     public HttpObject serverToProxyResponse(HttpObject httpObject) {
 //      return dummyResponse;

@@ -47,10 +47,8 @@ public class ProxyConfig {
       public HttpFilters filterRequest(HttpRequest originalRequest, ChannelHandlerContext ctx) {
         String uri = originalRequest.getUri().toLowerCase();
         if (whitelist.stream().anyMatch(uri::contains)) {
-          logger.info(String.format("ALLOWED: %s %s", originalRequest.getMethod(), uri));
           return new LoggingFilterAdapter(originalRequest, ctx);
         } else {
-          logger.info(String.format("BLOCKED: %s %s", originalRequest.getMethod(), uri));
           return new DummyFilterAdapter();
         }
       }
@@ -90,8 +88,8 @@ public class ProxyConfig {
         HttpRequest request = (HttpRequest) httpObject;
         StringBuilder sb = new StringBuilder();
         sb.append(System.getProperty("line.separator")).append(request.getMethod()).append("->").append(request.getUri());
-        sb.append(System.getProperty("line.separator"));
-        request.headers().forEach(header -> sb.append(header.getKey() + ": " + header.getValue()).append("; "));
+        sb.append(System.getProperty("line.separator")).append("\t").append("HEADERS->");
+        request.headers().forEach(header -> sb.append(header.getKey()).append(": ").append(header.getValue()).append("; "));
         logger.info(sb.toString());
       } else {
         logger.info("REQUEST " + httpObject.getClass());
@@ -143,8 +141,8 @@ public class ProxyConfig {
         HttpRequest request = (HttpRequest) httpObject;
         StringBuilder sb = new StringBuilder();
         sb.append(System.getProperty("line.separator")).append("[BLOCKED]").append(request.getMethod()).append("->").append(request.getUri());
-        sb.append(System.getProperty("line.separator"));
-        request.headers().forEach(header -> sb.append(header.getKey() + ": " + header.getValue()).append("; "));
+        sb.append(System.getProperty("line.separator")).append("\t").append("HEADERS->");
+        request.headers().forEach(header -> sb.append(header.getKey()).append(": ").append(header.getValue()).append("; "));
         logger.info(sb.toString());
       }
       return dummyResponse;
